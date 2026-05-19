@@ -1,0 +1,736 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fund Folio — Mutual Fund Scoring + Tax-Aware Exit Planner</title>
+<meta name="description" content="Free institutional-grade scoring for Indian mutual funds. HOLD/OBSERVE/TRIM/EXIT verdicts, LTCG tax planner across FYs. Runs entirely in your browser — your portfolio data never leaves your machine.">
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #14171c;
+    --panel-2: #1b1f26;
+    --border: #2a2f38;
+    --text: #e8ecef;
+    --muted: #8a93a0;
+    --accent: #4ade80;
+    --warn: #fbbf24;
+    --danger: #f87171;
+    --info: #60a5fa;
+    --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  a { color: var(--info); }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; }
+  header { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 16px; margin-bottom: 32px; }
+  header h1 { margin: 0 0 4px; font-size: 28px; letter-spacing: -0.02em; }
+  header .sub { color: var(--muted); font-size: 14px; }
+  header .by { color: var(--muted); font-size: 13px; }
+  header .by a { color: var(--info); text-decoration: none; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+  .pill.priv { background: rgba(74,222,128,0.12); color: var(--accent); border: 1px solid rgba(74,222,128,0.3); }
+
+  .grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
+  @media (min-width: 980px) { .grid { grid-template-columns: 380px 1fr; } }
+
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+  .panel h2 { margin: 0 0 16px; font-size: 16px; letter-spacing: -0.01em; }
+  .panel h3 { margin: 24px 0 10px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  input, select, textarea {
+    width: 100%; padding: 8px 10px; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; font: inherit; font-size: 14px;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--info); }
+  textarea { font-family: var(--mono); font-size: 12px; min-height: 120px; resize: vertical; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+  button {
+    cursor: pointer; padding: 9px 14px; background: var(--info); color: #0b0d10; border: 0; border-radius: 6px;
+    font: inherit; font-weight: 600; font-size: 14px;
+  }
+  button:hover { filter: brightness(1.1); }
+  button.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); font-weight: 500; }
+  button.danger { background: transparent; color: var(--danger); border: 1px solid var(--danger); }
+  button.tiny { padding: 4px 8px; font-size: 12px; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+  .funds-list { margin-top: 8px; }
+  .fund-row {
+    display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center;
+    padding: 8px 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px;
+  }
+  .fund-row .name { font-size: 13px; }
+  .fund-row .meta { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+  .fund-row button { padding: 3px 6px; font-size: 11px; background: transparent; color: var(--danger); border: 1px solid transparent; }
+  .fund-row button:hover { border-color: var(--danger); }
+
+  .empty-state { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--border); border-radius: 8px; font-size: 13px; }
+
+  .summary { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px; }
+  @media (min-width: 600px) { .summary { grid-template-columns: repeat(4, 1fr); } }
+  .stat { background: var(--panel-2); padding: 14px; border-radius: 8px; border: 1px solid var(--border); }
+  .stat .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .stat .val { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+  .stat .delta { font-size: 12px; color: var(--accent); margin-top: 2px; }
+  .stat .delta.neg { color: var(--danger); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  td.num { text-align: right; font-family: var(--mono); font-size: 12px; }
+  th.num { text-align: right; }
+  tbody tr:hover { background: rgba(255,255,255,0.02); }
+
+  .verdict { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em; font-family: var(--mono); }
+  .v-HOLD-STRONG { background: rgba(74,222,128,0.15); color: var(--accent); }
+  .v-HOLD        { background: rgba(74,222,128,0.08); color: var(--accent); }
+  .v-OBSERVE     { background: rgba(96,165,250,0.12); color: var(--info); }
+  .v-TRIM        { background: rgba(251,191,36,0.15); color: var(--warn); }
+  .v-EXIT-LOSS, .v-EXIT-MICRO, .v-EXIT-UNDERPERF { background: rgba(248,113,113,0.15); color: var(--danger); }
+
+  details { margin: 16px 0; border: 1px solid var(--border); border-radius: 8px; }
+  details summary { padding: 12px 16px; cursor: pointer; font-weight: 600; font-size: 14px; }
+  details[open] summary { border-bottom: 1px solid var(--border); }
+  details .body { padding: 16px; }
+
+  .rationale { color: var(--muted); font-size: 12px; max-width: 360px; }
+
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; text-align: center; }
+  footer a { color: var(--muted); }
+
+  code.inline { background: var(--panel-2); padding: 1px 5px; border-radius: 3px; font-size: 12px; font-family: var(--mono); }
+
+  .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .hint a { color: var(--info); }
+  .warning-banner {
+    background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.25);
+    padding: 10px 14px; border-radius: 6px; font-size: 12px; color: var(--warn); margin-bottom: 20px;
+  }
+
+  .results-empty { padding: 80px 20px; text-align: center; color: var(--muted); }
+  .results-empty h3 { color: var(--text); margin: 0 0 6px; font-weight: 500; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Fund Folio <span class="pill priv">100% in-browser</span></h1>
+      <div class="sub">Institutional-grade scoring + tax-aware exit planner for Indian mutual funds.</div>
+    </div>
+    <div class="by">by <a href="https://sky-sigma.com">Sky Sigma</a> · <a href="https://github.com/fwbotworkamir-cloud/fundfolio">source</a></div>
+  </header>
+
+  <div class="warning-banner">
+    Your portfolio data never leaves your browser. No server, no analytics, no cookies, no login. Reload the page and your data is gone unless you choose "Save in this browser".
+  </div>
+
+  <div class="grid">
+
+    <!-- ============ LEFT: INPUT ============ -->
+    <div>
+      <div class="panel">
+        <h2>Add a fund</h2>
+        <label>Fund name</label>
+        <input id="f-name" placeholder="e.g. ICICI Prudential Balanced Advantage">
+
+        <label>SEBI category</label>
+        <select id="f-cat"></select>
+
+        <div class="row">
+          <div>
+            <label>Invested (₹)</label>
+            <input id="f-invested" type="number" placeholder="500000">
+          </div>
+          <div>
+            <label>Current value (₹)</label>
+            <input id="f-current" type="number" placeholder="700000">
+          </div>
+        </div>
+
+        <label>First invest date</label>
+        <input id="f-date" type="date">
+
+        <div class="btn-row">
+          <button id="add-fund">Add fund</button>
+          <button class="secondary" id="load-demo">Load demo data</button>
+        </div>
+        <div class="hint">Use the date of your earliest SIP / lump-sum into the fund.</div>
+
+        <h3>Portfolio (<span id="fund-count">0</span> funds)</h3>
+        <div id="funds-list" class="funds-list"></div>
+
+        <div class="btn-row">
+          <button id="score-btn">Score portfolio</button>
+          <button class="secondary" id="save-local">Save in this browser</button>
+          <button class="danger" id="clear-all">Clear all</button>
+        </div>
+
+        <h3>Tax settings</h3>
+        <div class="row">
+          <div>
+            <label>LTCG rate (%)</label>
+            <input id="ltcg-rate" type="number" value="12.5" step="0.1">
+          </div>
+          <div>
+            <label>Exemption (₹) per PAN/FY</label>
+            <input id="ltcg-exemption" type="number" value="125000">
+          </div>
+        </div>
+        <label style="display:flex; align-items:center; gap:6px; margin-top:8px;">
+          <input id="spousal" type="checkbox"> Include spousal LTCG exemption
+        </label>
+        <div class="hint">Default FY 2025-26 values. Adjust to your jurisdiction.</div>
+      </div>
+
+      <details>
+        <summary>How scoring works</summary>
+        <div class="body">
+          <p style="margin-top:0">Each fund gets a 0–100 composite score:</p>
+          <ul style="margin: 0; padding-left: 18px; font-size: 13px;">
+            <li><strong>Alpha vs SEBI category target</strong> (60% weight)</li>
+            <li><strong>Position size discipline</strong> (30% — penalises &gt;8% concentration)</li>
+            <li><strong>Holding duration</strong> (10% — rewards long-term holding)</li>
+          </ul>
+          <p style="margin: 12px 0 4px;">Verdicts in order of priority:</p>
+          <ul style="margin: 0; padding-left: 18px; font-size: 13px;">
+            <li><span class="verdict v-EXIT-LOSS">EXIT-LOSS</span> &mdash; negative absolute return; harvest loss</li>
+            <li><span class="verdict v-TRIM">TRIM</span> &mdash; position &gt; 20% of book</li>
+            <li><span class="verdict v-EXIT-MICRO">EXIT-MICRO</span> &mdash; non-thematic, &lt;₹2L; admin overhead</li>
+            <li><span class="verdict v-EXIT-UNDERPERF">EXIT-UNDERPERF</span> &mdash; held &gt;1yr, returns &lt;70% of target</li>
+            <li><span class="verdict v-OBSERVE">OBSERVE</span> &mdash; thematic &lt;1yr, or mild underperformance</li>
+            <li><span class="verdict v-HOLD-STRONG">HOLD-STRONG</span> &mdash; alpha &gt;3% over target, healthy position size</li>
+            <li><span class="verdict v-HOLD">HOLD</span> &mdash; in line with category, stay the course</li>
+          </ul>
+        </div>
+      </details>
+
+      <details>
+        <summary>Tax-phased exit planner</summary>
+        <div class="body" style="font-size: 13px; color: var(--muted);">
+          Exits are distributed across FY26-27, FY27-28, FY28-29 to maximise use of the annual LTCG exemption (₹1.25L per PAN, ₹2.5L combined if spousal exemption is enabled). Funds are sequenced lowest-gain-first to defer the tax bill on the largest gains.
+        </div>
+      </details>
+    </div>
+
+    <!-- ============ RIGHT: RESULTS ============ -->
+    <div id="results">
+      <div class="panel results-empty" id="empty-state">
+        <h3>No portfolio scored yet</h3>
+        <div>Add at least one fund on the left and click <strong>Score portfolio</strong>, or try <strong>Load demo data</strong>.</div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    <p>
+      Built by <a href="https://sky-sigma.com">Sky Sigma</a>.
+      Source on <a href="https://github.com/fwbotworkamir-cloud/fundfolio">GitHub</a>.
+      Not financial advice — model output only. Decisions are yours after CA review for tax + NRO repatriation impact (NRIs).
+    </p>
+  </footer>
+</div>
+
+<script>
+// ───────────────────────────────────────────────────────────────
+//  CATEGORY EXPECTATIONS — SEBI categories with realistic
+//  long-term annualised return targets.
+// ───────────────────────────────────────────────────────────────
+const CATEGORY_EXPECTATIONS = {
+  // Hybrid (defensive)
+  "Balanced Advantage":         {target: 11.0, risk: "Low-Mid"},
+  "Multi Asset":                {target: 10.0, risk: "Low-Mid"},
+  "Aggressive Hybrid":          {target: 12.0, risk: "Mid"},
+  // Equity
+  "Large Cap":                  {target: 12.5, risk: "Mid"},
+  "Large & Mid Cap":            {target: 13.5, risk: "Mid-High"},
+  "Mid Cap":                    {target: 14.5, risk: "High"},
+  "Small Cap":                  {target: 15.5, risk: "Very High"},
+  "Multi Cap":                  {target: 13.5, risk: "Mid-High"},
+  "Flexi Cap":                  {target: 13.0, risk: "Mid-High"},
+  "ELSS / Tax Saver":           {target: 13.0, risk: "Mid-High"},
+  "Value":                      {target: 13.0, risk: "Mid-High"},
+  "Dividend Yield":             {target: 11.0, risk: "Mid"},
+  // Thematic / sectoral
+  "Thematic - Manufacturing":   {target: 14.0, risk: "High"},
+  "Thematic - Business Cycle":  {target: 13.0, risk: "High"},
+  "Thematic - Momentum":        {target: 13.0, risk: "Very High"},
+  "Thematic - MNC":             {target: 12.0, risk: "Mid-High"},
+  "Thematic - Infrastructure":  {target: 13.5, risk: "High"},
+  "Thematic - ESG":             {target: 11.5, risk: "Mid-High"},
+  "Thematic - Quant":           {target: 12.5, risk: "High"},
+  "Sectoral - BFSI":            {target: 13.5, risk: "High"},
+  "Sectoral - Tech":            {target: 13.0, risk: "Very High"},
+  "Sectoral - Pharma":          {target: 12.5, risk: "High"},
+  "Sectoral - FMCG":            {target: 11.0, risk: "Mid"},
+  "Sectoral - Energy":          {target: 12.5, risk: "High"},
+  // Debt-ish (not really our use case, included for completeness)
+  "Conservative Hybrid":        {target: 8.5,  risk: "Low"},
+  "Equity Savings":             {target: 9.0,  risk: "Low"},
+};
+
+// ───────────────────────────────────────────────────────────────
+//  STATE
+// ───────────────────────────────────────────────────────────────
+let portfolio = [];
+
+// ───────────────────────────────────────────────────────────────
+//  CORE METRICS
+// ───────────────────────────────────────────────────────────────
+function daysHeld(dateStr) {
+  if (!dateStr) return 0;
+  const d = new Date(dateStr);
+  const t = new Date();
+  return Math.max(0, Math.round((t - d) / 86400000));
+}
+function annualisedReturn(invested, current, days) {
+  if (invested <= 0 || days <= 0) return 0;
+  const years = days / 365.25;
+  if (years < 0.01) return 0;
+  return (Math.pow(current / invested, 1 / years) - 1) * 100;
+}
+function absoluteReturnPct(invested, current) {
+  if (invested <= 0) return 0;
+  return (current / invested - 1) * 100;
+}
+function positionSizePct(current, totalBook) {
+  if (totalBook <= 0) return 0;
+  return (current / totalBook) * 100;
+}
+function ltcgTax(invested, current, redeem, exemption, rate) {
+  if (invested <= 0 || current <= 0 || redeem <= 0) return 0;
+  const gainRatio = Math.max(0, (current - invested) / current);
+  const proRataGain = redeem * gainRatio;
+  const taxable = Math.max(0, proRataGain - exemption);
+  return taxable * (rate / 100);
+}
+
+// ───────────────────────────────────────────────────────────────
+//  SCORING + VERDICT
+// ───────────────────────────────────────────────────────────────
+function scoreFund(fund, totalBook) {
+  const bench = CATEGORY_EXPECTATIONS[fund.category] || {target: 12, risk: "Mid"};
+  const days = daysHeld(fund.first_invest_date);
+  const annRet = annualisedReturn(fund.invested, fund.current, days);
+  const absRet = absoluteReturnPct(fund.invested, fund.current);
+  const posPct = positionSizePct(fund.current, totalBook);
+  const alpha = annRet - bench.target;
+
+  const alphaScore = Math.max(0, Math.min(100, 50 + alpha * 8));
+  const sizeScore = posPct < 8 ? 100 : Math.max(0, 100 - (posPct - 8) * 10);
+  const durationScore = Math.min(100, days / 365.25 * 30);
+  const composite = Math.round((alphaScore * 0.6 + sizeScore * 0.3 + durationScore * 0.1) * 10) / 10;
+
+  const isThematic = fund.category.includes("Thematic") || fund.category.includes("Sectoral");
+  const isMicro = fund.current < 200000;
+  const isLoss = absRet < 0;
+  const isConcentrated = posPct > 20;
+  const isUnderperform = annRet < (bench.target * 0.7) && days > 365;
+
+  let verdict, rationale;
+  if (isLoss) {
+    verdict = "EXIT-LOSS";
+    rationale = `Loss-making (${absRet.toFixed(1)}%). Tax-loss harvest opportunity. Exit + redeploy.`;
+  } else if (isConcentrated) {
+    verdict = "TRIM";
+    rationale = `Position at ${posPct.toFixed(1)}% — single-fund concentration > 20%. Trim to ≤15%.`;
+  } else if (isMicro && !isThematic) {
+    verdict = "EXIT-MICRO";
+    rationale = `Micro position (${fmtINR(fund.current)}). Admin overhead exceeds portfolio impact.`;
+  } else if (isUnderperform) {
+    verdict = "EXIT-UNDERPERF";
+    rationale = `Annualised ${annRet.toFixed(1)}% vs category target ${bench.target.toFixed(1)}% — long underperformance.`;
+  } else if (isThematic && days < 365) {
+    verdict = "OBSERVE";
+    rationale = `Thematic bet, <1 year. Hold and watch — don't compound, don't exit.`;
+  } else if (alpha > 3 && posPct < 15) {
+    verdict = "HOLD-STRONG";
+    rationale = `Alpha ${alpha > 0 ? "+" : ""}${alpha.toFixed(1)}% over category target. Position size OK. Stay invested.`;
+  } else if (alpha > 0) {
+    verdict = "HOLD";
+    rationale = `In line with or above category. Stay the course.`;
+  } else {
+    verdict = "OBSERVE";
+    rationale = `Mild underperformance (${alpha.toFixed(1)}%). Review next quarter.`;
+  }
+
+  return {
+    ticker: fund.name,
+    category: fund.category,
+    risk: bench.risk,
+    invested: fund.invested,
+    current: fund.current,
+    absRet, annRet, alpha, target: bench.target, days,
+    posPct, score: composite, verdict, rationale
+  };
+}
+
+// ───────────────────────────────────────────────────────────────
+//  TAX-PHASED EXIT PLANNER
+// ───────────────────────────────────────────────────────────────
+function planTaxPhasedExits(scored, exemption, rate, spousal) {
+  const exits = scored.filter(f => f.verdict.startsWith("EXIT"));
+  exits.sort((a, b) => {
+    const ga = a.current > 0 ? (a.current - a.invested) / a.current : 0;
+    const gb = b.current > 0 ? (b.current - b.invested) / b.current : 0;
+    return ga - gb;
+  });
+  const pool = exemption * (spousal ? 2 : 1);
+  const phases = {"FY26-27": [], "FY27-28": [], "FY28-29": []};
+  const keys = Object.keys(phases);
+  let idx = 0, cum = 0;
+  for (const f of exits) {
+    const gain = f.current - f.invested;
+    if (cum + gain > pool * 12) {
+      idx = Math.min(idx + 1, keys.length - 1);
+      cum = 0;
+    }
+    cum += Math.max(0, gain);
+    phases[keys[idx]].push(f);
+  }
+  return phases;
+}
+
+// ───────────────────────────────────────────────────────────────
+//  FORMATTERS
+// ───────────────────────────────────────────────────────────────
+function fmtINR(n) {
+  if (n == null || isNaN(n)) return "—";
+  const abs = Math.abs(n);
+  if (abs >= 10000000) return `₹${(n / 10000000).toFixed(2)} Cr`;
+  if (abs >= 100000)   return `₹${(n / 100000).toFixed(2)} L`;
+  return `₹${Math.round(n).toLocaleString("en-IN")}`;
+}
+function fmtPct(n, signed = false) {
+  if (n == null || isNaN(n)) return "—";
+  const s = signed && n > 0 ? "+" : "";
+  return `${s}${n.toFixed(1)}%`;
+}
+
+// ───────────────────────────────────────────────────────────────
+//  UI: FUND MANAGEMENT
+// ───────────────────────────────────────────────────────────────
+function renderFundsList() {
+  const wrap = document.getElementById("funds-list");
+  document.getElementById("fund-count").textContent = portfolio.length;
+  if (portfolio.length === 0) {
+    wrap.innerHTML = `<div class="empty-state">No funds yet. Add one above or load demo data.</div>`;
+    return;
+  }
+  wrap.innerHTML = portfolio.map((f, i) => `
+    <div class="fund-row">
+      <div>
+        <div class="name">${escapeHtml(f.name)}</div>
+        <div class="meta">${escapeHtml(f.category)} · ${fmtINR(f.invested)} → ${fmtINR(f.current)}</div>
+      </div>
+      <button onclick="removeFund(${i})" title="Remove">×</button>
+    </div>
+  `).join("");
+}
+
+function addFund() {
+  const name = document.getElementById("f-name").value.trim();
+  const category = document.getElementById("f-cat").value;
+  const invested = parseFloat(document.getElementById("f-invested").value);
+  const current = parseFloat(document.getElementById("f-current").value);
+  const date = document.getElementById("f-date").value;
+  if (!name || !category || !invested || !current || !date) {
+    alert("Fill all fields before adding.");
+    return;
+  }
+  portfolio.push({name, category, invested, current, first_invest_date: date});
+  ["f-name","f-invested","f-current"].forEach(id => document.getElementById(id).value = "");
+  document.getElementById("f-date").value = "";
+  renderFundsList();
+}
+window.removeFund = function(i) {
+  portfolio.splice(i, 1);
+  renderFundsList();
+};
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+// ──────────────────────────────────────────────────────────────
+//  UI: SCORING + REPORT RENDER
+// ───────────────────────────────────────────────────────────────
+function score() {
+  if (portfolio.length === 0) {
+    alert("Add at least one fund first.");
+    return;
+  }
+  const exemption = parseFloat(document.getElementById("ltcg-exemption").value) || 125000;
+  const rate = parseFloat(document.getElementById("ltcg-rate").value) || 12.5;
+  const spousal = document.getElementById("spousal").checked;
+
+  const totalBook = portfolio.reduce((s, f) => s + f.current, 0);
+  const scored = portfolio.map(f => scoreFund(f, totalBook));
+
+  const order = {"HOLD-STRONG":0, "HOLD":1, "OBSERVE":2, "TRIM":3, "EXIT-LOSS":4, "EXIT-MICRO":5, "EXIT-UNDERPERF":6};
+  scored.sort((a, b) => (order[a.verdict] - order[b.verdict]) || (b.score - a.score));
+
+  const phases = planTaxPhasedExits(scored, exemption, rate, spousal);
+  renderReport(scored, phases, exemption, rate);
+}
+
+function renderReport(scored, phases, exemption, rate) {
+  const totalInv = scored.reduce((s, f) => s + f.invested, 0);
+  const totalCur = scored.reduce((s, f) => s + f.current, 0);
+  const totalGain = totalCur - totalInv;
+  const totalRetPct = totalInv > 0 ? (totalCur / totalInv - 1) * 100 : 0;
+
+  const byVerdict = {};
+  scored.forEach(f => {
+    if (!byVerdict[f.verdict]) byVerdict[f.verdict] = [];
+    byVerdict[f.verdict].push(f);
+  });
+
+  const verdictOrder = ["HOLD-STRONG","HOLD","OBSERVE","TRIM","EXIT-UNDERPERF","EXIT-MICRO","EXIT-LOSS"];
+
+  let html = `
+    <div class="summary">
+      <div class="stat"><div class="lbl">Funds</div><div class="val">${scored.length}</div></div>
+      <div class="stat"><div class="lbl">Invested</div><div class="val">${fmtINR(totalInv)}</div></div>
+      <div class="stat"><div class="lbl">Current</div><div class="val">${fmtINR(totalCur)}</div></div>
+      <div class="stat"><div class="lbl">Unrealised</div><div class="val">${fmtINR(totalGain)}</div><div class="delta ${totalRetPct < 0 ? 'neg' : ''}">${fmtPct(totalRetPct, true)}</div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Verdict distribution</h2>
+      <table>
+        <thead><tr><th>Verdict</th><th class="num">Funds</th><th class="num">% of book</th></tr></thead>
+        <tbody>
+  `;
+  for (const v of verdictOrder) {
+    const fs = byVerdict[v];
+    if (!fs) continue;
+    const cap = fs.reduce((s, f) => s + f.current, 0);
+    html += `<tr>
+      <td><span class="verdict v-${v}">${v}</span></td>
+      <td class="num">${fs.length}</td>
+      <td class="num">${fmtPct(cap / totalCur * 100)}</td>
+    </tr>`;
+  }
+  html += `</tbody></table></div>`;
+
+  // Detailed table per fund
+  html += `
+    <div class="panel" style="margin-top:20px;">
+      <h2>Fund-by-fund detail</h2>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th>Fund</th><th>Category</th><th class="num">Current</th>
+          <th class="num">Ret %</th><th class="num">Ann %</th><th class="num">Target</th>
+          <th class="num">Alpha</th><th class="num">% Book</th><th class="num">Score</th>
+          <th>Verdict</th><th>Rationale</th>
+        </tr></thead>
+        <tbody>
+  `;
+  for (const f of scored) {
+    html += `<tr>
+      <td>${escapeHtml(f.ticker)}</td>
+      <td>${escapeHtml(f.category)}</td>
+      <td class="num">${fmtINR(f.current)}</td>
+      <td class="num">${fmtPct(f.absRet, true)}</td>
+      <td class="num">${fmtPct(f.annRet)}</td>
+      <td class="num">${fmtPct(f.target)}</td>
+      <td class="num" style="color:${f.alpha >= 0 ? 'var(--accent)' : 'var(--danger)'}">${fmtPct(f.alpha, true)}</td>
+      <td class="num">${fmtPct(f.posPct)}</td>
+      <td class="num">${f.score.toFixed(1)}</td>
+      <td><span class="verdict v-${f.verdict}">${f.verdict}</span></td>
+      <td class="rationale">${escapeHtml(f.rationale)}</td>
+    </tr>`;
+  }
+  html += `</tbody></table></div></div>`;
+
+  // Tax-phased exits
+  const anyExits = Object.values(phases).some(arr => arr.length > 0);
+  if (anyExits) {
+    html += `<div class="panel" style="margin-top:20px;"><h2>Tax-phased exit plan</h2>`;
+    html += `<p style="color:var(--muted); font-size:13px; margin-top:0;">
+      LTCG rate ${rate}%, exemption ${fmtINR(exemption)} per PAN${document.getElementById("spousal").checked ? " (×2 with spousal)" : ""} per FY. Order: lowest-gain first.
+    </p>`;
+    for (const [fy, fs] of Object.entries(phases)) {
+      if (fs.length === 0) continue;
+      const totalRedeem = fs.reduce((s, f) => s + f.current, 0);
+      const totalTax = fs.reduce((s, f) => s + ltcgTax(f.invested, f.current, f.current, exemption, rate), 0);
+      html += `<h3 style="color:var(--text); margin-top:18px;">${fy} <span style="color:var(--muted);font-weight:400;font-size:12px;">· ${fs.length} exits · ${fmtINR(totalRedeem)} redemption · est. tax ${fmtINR(totalTax)}</span></h3>`;
+      html += `<table><thead><tr><th>Fund</th><th>Verdict</th><th class="num">Current</th><th class="num">Est. LTCG tax</th></tr></thead><tbody>`;
+      for (const f of fs) {
+        const tax = ltcgTax(f.invested, f.current, f.current, exemption, rate);
+        html += `<tr>
+          <td>${escapeHtml(f.ticker)}</td>
+          <td><span class="verdict v-${f.verdict}">${f.verdict}</span></td>
+          <td class="num">${fmtINR(f.current)}</td>
+          <td class="num">${fmtINR(tax)}</td>
+        </tr>`;
+      }
+      html += `</tbody></table>`;
+    }
+    html += `</div>`;
+  }
+
+  // Export
+  html += `
+    <div class="panel" style="margin-top:20px;">
+      <h2>Export</h2>
+      <div class="btn-row">
+        <button class="secondary" onclick="downloadJSON()">Download JSON</button>
+        <button class="secondary" onclick="downloadMD()">Download Markdown</button>
+        <button class="secondary" onclick="window.print()">Print / Save as PDF</button>
+      </div>
+    </div>
+  `;
+
+  window.__lastScored = scored;
+  window.__lastPhases = phases;
+  document.getElementById("results").innerHTML = html;
+}
+
+// ───────────────────────────────────────────────────────────────
+//  EXPORTS
+// ───────────────────────────────────────────────────────────────
+window.downloadJSON = function() {
+  const blob = new Blob([JSON.stringify({
+    generated: new Date().toISOString(),
+    scored: window.__lastScored,
+    phases: Object.fromEntries(Object.entries(window.__lastPhases).map(([k,v]) => [k, v.map(f => f.ticker)]))
+  }, null, 2)], {type: "application/json"});
+  triggerDownload(blob, `fundfolio_${dateStamp()}.json`);
+};
+window.downloadMD = function() {
+  const lines = [];
+  const sc = window.__lastScored;
+  const ph = window.__lastPhases;
+  const totalCur = sc.reduce((s, f) => s + f.current, 0);
+  const totalInv = sc.reduce((s, f) => s + f.invested, 0);
+  lines.push(`# Fund Folio — Briefing`);
+  lines.push(`*Generated ${new Date().toLocaleString()}*`);
+  lines.push("");
+  lines.push(`## Snapshot`);
+  lines.push(`- Funds tracked: **${sc.length}**`);
+  lines.push(`- Invested: **${fmtINR(totalInv)}**`);
+  lines.push(`- Current: **${fmtINR(totalCur)}**`);
+  lines.push(`- Unrealised gain: **${fmtINR(totalCur - totalInv)}** (${fmtPct((totalCur/totalInv - 1) * 100, true)})`);
+  lines.push("");
+  lines.push(`## Fund detail`);
+  lines.push("");
+  lines.push(`| Fund | Category | Current | Ret % | Ann % | Alpha | % Book | Verdict | Rationale |`);
+  lines.push(`|---|---|---:|---:|---:|---:|---:|---|---|`);
+  for (const f of sc) {
+    lines.push(`| ${f.ticker} | ${f.category} | ${fmtINR(f.current)} | ${fmtPct(f.absRet, true)} | ${fmtPct(f.annRet)} | ${fmtPct(f.alpha, true)} | ${fmtPct(f.posPct)} | ${f.verdict} | ${f.rationale} |`);
+  }
+  lines.push("");
+  for (const [fy, fs] of Object.entries(ph)) {
+    if (!fs.length) continue;
+    lines.push(`### ${fy}`);
+    for (const f of fs) lines.push(`- **${f.ticker}** — ${f.verdict} · ${fmtINR(f.current)}`);
+    lines.push("");
+  }
+  const blob = new Blob([lines.join("\n")], {type: "text/markdown"});
+  triggerDownload(blob, `fundfolio_${dateStamp()}.md`);
+};
+function triggerDownload(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+function dateStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// ───────────────────────────────────────────────────────────────
+//  LOCAL PERSISTENCE
+// ──────────────────────────────────────────────────────────────
+function saveLocal() {
+  try {
+    localStorage.setItem("fundfolio_portfolio", JSON.stringify(portfolio));
+    localStorage.setItem("fundfolio_settings", JSON.stringify({
+      ltcg: document.getElementById("ltcg-rate").value,
+      exemption: document.getElementById("ltcg-exemption").value,
+      spousal: document.getElementById("spousal").checked
+    }));
+    alert("Saved in this browser. Will reload next visit.");
+  } catch (e) {
+    alert("Couldn't save: " + e.message);
+  }
+}
+function loadLocal() {
+  try {
+    const p = localStorage.getItem("fundfolio_portfolio");
+    if (p) portfolio = JSON.parse(p);
+    const s = localStorage.getItem("fundfolio_settings");
+    if (s) {
+      const ss = JSON.parse(s);
+      if (ss.ltcg) document.getElementById("ltcg-rate").value = ss.ltcg;
+      if (ss.exemption) document.getElementById("ltcg-exemption").value = ss.exemption;
+      if (ss.spousal) document.getElementById("spousal").checked = ss.spousal;
+    }
+  } catch (e) {}
+}
+function clearAll() {
+  if (!confirm("Clear all funds from this session?")) return;
+  portfolio = [];
+  try {
+    localStorage.removeItem("fundfolio_portfolio");
+    localStorage.removeItem("fundfolio_settings");
+  } catch (e) {}
+  renderFundsList();
+  document.getElementById("results").innerHTML = `
+    <div class="panel results-empty">
+      <h3>Cleared.</h3>
+      <div>Add funds on the left or load demo data.</div>
+    </div>`;
+}
+
+// ───────────────────────────────────────────────────────────────
+//  DEMO DATA — illustrative synthetic portfolio
+// ───────────────────────────────────────────────────────────────
+function loadDemo() {
+  portfolio = [
+    {name: "Sample Balanced Advantage Fund",  category: "Balanced Advantage", invested: 6000000, current: 7800000, first_invest_date: "2018-01-01"},
+    {name: "Sample Multi Asset Fund",          category: "Multi Asset",        invested: 1500000, current: 1900000, first_invest_date: "2020-01-01"},
+    {name: "Sample Large & Mid Cap",           category: "Large & Mid Cap",    invested:  500000, current:  650000, first_invest_date: "2023-06-01"},
+    {name: "Sample Mid Cap Fund",              category: "Mid Cap",            invested:  300000, current:  470000, first_invest_date: "2022-03-01"},
+    {name: "Sample Small Cap Fund",            category: "Small Cap",          invested:  100000, current:  185000, first_invest_date: "2022-08-01"},
+    {name: "Sample Manufacturing Thematic",    category: "Thematic - Manufacturing", invested: 200000, current: 245000, first_invest_date: "2024-04-01"},
+    {name: "Sample Momentum (losing)",         category: "Thematic - Momentum", invested: 200000, current: 175000, first_invest_date: "2023-09-01"},
+    {name: "Sample Underperforming Large Cap", category: "Large Cap",          invested:  100000, current:  108000, first_invest_date: "2022-01-01"},
+    {name: "Sample Micro Position",            category: "Sectoral - BFSI",    invested:   60000, current:   85000, first_invest_date: "2022-09-01"},
+  ];
+  renderFundsList();
+  score();
+}
+
+// ───────────────────────────────────────────────────────────────
+//  INIT
+// ───────────────────────────────────────────────────────────────
+function populateCategories() {
+  const sel = document.getElementById("f-cat");
+  const cats = Object.keys(CATEGORY_EXPECTATIONS);
+  sel.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join("");
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  populateCategories();
+  loadLocal();
+  renderFundsList();
+  document.getElementById("add-fund").onclick = addFund;
+  document.getElementById("load-demo").onclick = loadDemo;
+  document.getElementById("score-btn").onclick = score;
+  document.getElementById("save-local").onclick = saveLocal;
+  document.getElementById("clear-all").onclick = clearAll;
+});
+</script>
+</body>
+</html>
