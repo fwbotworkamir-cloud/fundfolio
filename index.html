@@ -76,13 +76,13 @@
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
   button {
-    cursor: pointer; padding: 9px 14px; background: var(--info); color: #0b0d10; border: 0; border-radius: 6px;
+    cursor: pointer; padding: 9px 14px; background: var(--accent); color: #0b0d10; border: 0; border-radius: 6px;
     font: inherit; font-weight: 600; font-size: 14px;
   }
   button:hover { filter: brightness(1.1); }
   button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border-2); font-weight: 500; }
   button.secondary:hover { border-color: var(--accent); color: var(--accent); }
-  button.danger { background: transparent; color: var(--bad); border: 1px solid var(--danger); }
+  button.danger { background: transparent; color: var(--bad); border: 1px solid var(--bad); }
   button.tiny { padding: 4px 8px; font-size: 12px; }
   .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 
@@ -605,7 +605,7 @@ function renderReport(scored, phases, exemption, rate) {
       <td class="num">${fmtPct(f.absRet, true)}</td>
       <td class="num">${fmtPct(f.annRet)}</td>
       <td class="num">${fmtPct(f.target)}</td>
-      <td class="num" style="color:${f.alpha >= 0 ? 'var(--accent)' : 'var(--danger)'}">${fmtPct(f.alpha, true)}</td>
+      <td class="num" style="color:${f.alpha >= 0 ? 'var(--accent)' : 'var(--bad)'}">${fmtPct(f.alpha, true)}</td>
       <td class="num">${fmtPct(f.posPct)}</td>
       <td class="num">${f.score.toFixed(1)}</td>
       <td><span class="verdict v-${f.verdict}">${f.verdict}</span></td>
