@@ -1348,6 +1348,70 @@ function setupCSVPaste() {
   };
 }
 
+
+
+// ───────────────────────────────────────────────────────────────
+//  URL-PARAM MODE — for agent invocation
+//  Examples:
+//    ?demo=1
+//    ?funds=ICICI%20Pru%20BAF:Balanced%20Advantage:500000:700000:2018-01-01,HDFC%20Mid%20Cap:Mid%20Cap:300000:470000:2022-03-01&score=1
+//    ?spousal=1&ltcg=12.5&exemption=125000
+// ───────────────────────────────────────────────────────────────
+function parseURLParams() {
+  const params = new URLSearchParams(window.location.search);
+
+  // Settings
+  if (params.has("ltcg")) {
+    document.getElementById("ltcg-rate").value = params.get("ltcg");
+  }
+  if (params.has("exemption")) {
+    document.getElementById("ltcg-exemption").value = params.get("exemption");
+  }
+  if (params.get("spousal") === "1" || params.get("spousal") === "true") {
+    document.getElementById("spousal").checked = true;
+  }
+
+  // Funds — colon-separated tuples, comma-separated rows
+  if (params.has("funds")) {
+    const rows = params.get("funds").split(",");
+    const parsedFunds = [];
+    for (const row of rows) {
+      const parts = row.split(":");
+      if (parts.length < 4) continue;
+      const [name, category, invested, current, date] = parts;
+      if (!name || !category || !invested || !current) continue;
+      const inv = parseFloat(invested);
+      const cur = parseFloat(current);
+      if (!isFinite(inv) || !isFinite(cur)) continue;
+      parsedFunds.push({
+        name: decodeURIComponent(name).trim(),
+        category: CATEGORY_EXPECTATIONS[decodeURIComponent(category).trim()]
+                  ? decodeURIComponent(category).trim()
+                  : inferCategory(decodeURIComponent(name)),
+        invested: inv,
+        current: cur,
+        first_invest_date: date && /^\d{4}-\d{2}-\d{2}/.test(date) ? date.slice(0,10) : "2023-01-01",
+      });
+    }
+    if (parsedFunds.length > 0) {
+      const result = mergeFunds(parsedFunds);
+      renderFundsList();
+      showImportStatus(`URL-loaded ${result.added.length} fund${result.added.length===1?"":"s"}.`, "ok");
+    }
+  }
+
+  // Demo data
+  if (params.get("demo") === "1" || params.get("demo") === "true") {
+    loadDemo();
+    return; // loadDemo() already scores
+  }
+
+  // Auto-score if requested
+  if (params.get("score") === "1" || params.get("score") === "true") {
+    if (portfolio.length > 0) score();
+  }
+}
+
 // ───────────────────────────────────────────────────────────────
 //  INIT
 // ───────────────────────────────────────────────────────────────
@@ -1369,6 +1433,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupImportTabs();
   setupFileDrops();
   setupCSVPaste();
+  parseURLParams();
 });
 </script>
 </body>

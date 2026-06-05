@@ -1,0 +1,85 @@
+{
+  "name": "Fund Folio",
+  "version": "1.0",
+  "url": "https://fundfolio.sky-sigma.com",
+  "source": "https://github.com/fwbotworkamir-cloud/fundfolio",
+  "license": "MIT",
+  "maintainer": "Sky Sigma",
+  "description": "Free, client-side mutual fund scoring and tax-aware exit planner for Indian investors.",
+  "audience": "Indian mutual fund investors (resident, NRI, HNI)",
+  "privacy": "All processing is client-side. No portfolio data is sent to any server.",
+
+  "invocation": {
+    "interactive": "https://fundfolio.sky-sigma.com",
+    "url_param_demo": "https://fundfolio.sky-sigma.com/?demo=1&score=1",
+    "url_param_funds": "https://fundfolio.sky-sigma.com/?funds=NAME:CATEGORY:INVESTED:CURRENT:YYYY-MM-DD,...&spousal=1&score=1",
+    "url_param_fields": [
+      "funds (comma-separated rows, each row colon-separated: name:category:invested:current:first_invest_date)",
+      "demo (1 = load synthetic demo portfolio and score it)",
+      "spousal (1 = enable spousal LTCG exemption, doubling combined exemption)",
+      "ltcg (numeric LTCG rate as percent, default 12.5)",
+      "exemption (numeric LTCG exemption in rupees, default 125000)",
+      "score (1 = auto-run score() after loading)"
+    ]
+  },
+
+  "capabilities": [
+    "score_fund: 0-100 composite score per fund",
+    "verdict_fund: HOLD-STRONG | HOLD | OBSERVE | TRIM | EXIT-LOSS | EXIT-MICRO | EXIT-UNDERPERF",
+    "plan_tax_phased_exits: distribute EXIT verdicts across FY26-27, FY27-28, FY28-29",
+    "estimate_ltcg_tax: pro-rata 12.5% with exemption applied",
+    "export: JSON, Markdown, PDF"
+  ],
+
+  "verdict_thresholds": {
+    "EXIT-LOSS": "absolute return < 0",
+    "TRIM": "single-fund concentration > 20% of book",
+    "EXIT-MICRO": "non-thematic position < INR 200,000",
+    "EXIT-UNDERPERF": "held > 365 days AND annualised return < 0.7 * category target",
+    "OBSERVE": "thematic and held < 365 days, OR mild underperformance",
+    "HOLD-STRONG": "alpha > 3% AND position size < 15% of book",
+    "HOLD": "alpha >= 0 and no other rule fires"
+  },
+
+  "category_targets_annualised_percent": {
+    "Balanced Advantage": 11.0,
+    "Multi Asset": 10.0,
+    "Aggressive Hybrid": 12.0,
+    "Conservative Hybrid": 8.5,
+    "Equity Savings": 9.0,
+    "Large Cap": 12.5,
+    "Large & Mid Cap": 13.5,
+    "Mid Cap": 14.5,
+    "Small Cap": 15.5,
+    "Multi Cap": 13.5,
+    "Flexi Cap": 13.0,
+    "ELSS / Tax Saver": 13.0,
+    "Value": 13.0,
+    "Dividend Yield": 11.0,
+    "Thematic - Manufacturing": 14.0,
+    "Thematic - Business Cycle": 13.0,
+    "Thematic - Momentum": 13.0,
+    "Thematic - MNC": 12.0,
+    "Thematic - Infrastructure": 13.5,
+    "Thematic - ESG": 11.5,
+    "Thematic - Quant": 12.5,
+    "Sectoral - BFSI": 13.5,
+    "Sectoral - Tech": 13.0,
+    "Sectoral - Pharma": 12.5,
+    "Sectoral - FMCG": 11.0,
+    "Sectoral - Energy": 12.5
+  },
+
+  "tax_defaults_fy_2025_26": {
+    "ltcg_rate_percent": 12.5,
+    "exemption_per_pan": 125000,
+    "spousal_combined_exemption": 250000
+  },
+
+  "related_tools": [
+    {
+      "name": "UAE E-Invoice Pre-Flight Validator",
+      "url": "https://einvoice.sky-sigma.com"
+    }
+  ]
+}
