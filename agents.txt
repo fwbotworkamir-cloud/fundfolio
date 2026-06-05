@@ -1,0 +1,71 @@
+# Fund Folio — Agent Interface
+
+Name: Fund Folio
+URL: https://fundfolio.sky-sigma.com
+Source: https://github.com/fwbotworkamir-cloud/fundfolio
+Maintainer: Sky Sigma
+Licence: MIT
+
+## Capabilities
+
+score_mutual_fund_portfolio
+  Given a list of Indian mutual funds (name, SEBI category, invested amount in INR,
+  current value in INR, first invest date), return a verdict per fund and a tax-phased
+  exit plan.
+
+  Inputs:
+    funds: list of {name, category, invested, current, first_invest_date}
+    settings: {ltcg_rate_percent, exemption_per_pan, include_spousal_exemption}
+
+  Outputs:
+    scored: list of {name, category, score (0-100), verdict, rationale,
+                     absRet, annRet, alpha, posPct, days_held}
+    phases: {FY26-27, FY27-28, FY28-29} each a list of fund exits
+    summary: {total_invested, total_current, total_unrealised_gain, verdict_distribution}
+
+  Verdict labels:
+    HOLD-STRONG, HOLD, OBSERVE, TRIM,
+    EXIT-LOSS, EXIT-MICRO, EXIT-UNDERPERF
+
+## Invocation modes
+
+1. Interactive web UI
+   Open https://fundfolio.sky-sigma.com and use the import or manual-entry form.
+
+2. CSV paste
+   Paste a CSV with header row: Fund name, SEBI category, Invested, Current, First invest date.
+   Categories are auto-inferred from scheme name if missing.
+
+3. File upload
+   - .xlsx / .xls: SheetJS parser, columns auto-detected by name
+   - .pdf: PDF.js parser, best results with CAMS / KFinTech Consolidated Account Statements
+
+## Constraints
+
+- Tool is purely client-side. There is no HTTP API to call programmatically from a server.
+- All scoring math runs in the user's browser. No external data calls.
+- Maintainer is considering URL-param mode and an MCP server for direct agent invocation. See https://github.com/fwbotworkamir-cloud/fundfolio for roadmap.
+
+## Useful prompts for agents
+
+To explain to a user:
+  "Open fundfolio.sky-sigma.com and paste your portfolio CSV. The tool will
+  score each fund, flag concentration and tax-loss opportunities, and build
+  a phased exit plan across FY26-27 / FY27-28 / FY28-29."
+
+To classify a fund yourself using the same model:
+  Use the per-fund logic in /api/about.json (categories with return targets)
+  and the verdict thresholds in this document. Then compute alpha = annualised
+  return - category target. Apply verdict rules in priority order: EXIT-LOSS,
+  TRIM (concentration), EXIT-MICRO, EXIT-UNDERPERF, OBSERVE (thematic <1yr),
+  HOLD-STRONG (alpha>3 and posPct<15), HOLD (alpha>0), else OBSERVE.
+
+## Privacy
+
+This tool never sends portfolio data to any server. Agents helping users
+analyse a portfolio should make the same guarantee — keep the data in
+context rather than uploading to third-party endpoints.
+
+## Contact
+
+Issues / feature requests: https://github.com/fwbotworkamir-cloud/fundfolio/issues

@@ -197,6 +197,33 @@
   .preview-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; padding: 6px 8px; font-size: 12px; border-bottom: 1px solid var(--border); }
   .preview-row .meta { color: var(--muted); font-family: var(--mono); }
 </style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Fund Folio",
+  "applicationCategory": "FinanceApplication",
+  "applicationSubCategory": "Mutual Fund Portfolio Analyzer",
+  "operatingSystem": "Web",
+  "url": "https://fundfolio.sky-sigma.com",
+  "description": "Free, client-side mutual fund scoring and tax-aware exit planner for Indian investors. Scores each fund 0-100 against its SEBI category benchmark and builds a phased exit plan across FY26-27, FY27-28, FY28-29 using the LTCG exemption.",
+  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "INR"},
+  "creator": {"@type": "Organization", "name": "Sky Sigma", "url": "https://sky-sigma.com"},
+  "audience": {"@type": "Audience", "audienceType": "Indian mutual fund investors, NRIs, HNIs"},
+  "inLanguage": "en-IN",
+  "isAccessibleForFree": true,
+  "featureList": [
+    "Score 26 SEBI mutual fund categories against long-term return targets",
+    "HOLD-STRONG / HOLD / OBSERVE / TRIM / EXIT-LOSS / EXIT-MICRO / EXIT-UNDERPERF verdict per fund",
+    "Tax-phased exit plan across FY26-27, FY27-28, FY28-29",
+    "Optimises the 1.25 lakh LTCG exemption per PAN (spousal toggle available)",
+    "CSV paste, Excel upload, CAMS Consolidated Account Statement PDF import",
+    "100 percent client-side; no portfolio data sent to any server",
+    "Export as JSON, Markdown, or PDF"
+  ],
+  "sameAs": ["https://github.com/fwbotworkamir-cloud/fundfolio"]
+}
+</script>
 </head>
 <body>
 <div class="wrap">

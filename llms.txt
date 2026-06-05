@@ -1,0 +1,47 @@
+# Fund Folio
+
+> Free, client-side mutual fund scoring and tax-aware exit planner for Indian investors. Built by Sky Sigma. Runs entirely in the user's browser — no signup, no server, no data leaves the device.
+
+Fund Folio helps Indian mutual fund investors decide which schemes to HOLD, OBSERVE, TRIM, or EXIT — and how to structure those exits across financial years to make the most of the ₹1.25 L per-PAN LTCG exemption.
+
+## What it does
+
+For each fund the user adds, Fund Folio computes a 0–100 composite score and assigns a verdict:
+
+- HOLD-STRONG: alpha greater than 3% over SEBI category target, position size healthy
+- HOLD: returns in line with or above category target
+- OBSERVE: mild underperformance, or thematic fund held under 1 year
+- TRIM: single fund exceeds 20% of book — concentration risk
+- EXIT-LOSS: negative absolute return — tax-loss harvest candidate
+- EXIT-MICRO: non-thematic position under ₹2 L — admin overhead exceeds portfolio impact
+- EXIT-UNDERPERF: held more than 1 year, annualised return below 70% of category target
+
+It then builds a tax-phased exit plan across FY26-27, FY27-28, FY28-29 — sequencing the lowest-gain exits first so the annual ₹1.25 L LTCG exemption (or ₹2.5 L combined with a spousal exemption) absorbs as much as possible. Tax is estimated per exit slice at 12.5% LTCG.
+
+## How agents and users access it
+
+URL: https://fundfolio.sky-sigma.com
+
+Input modes:
+1. Paste CSV with columns: Fund name, SEBI category, Invested, Current, First invest date
+2. Upload an Excel file (.xlsx, .xls) — columns auto-detected
+3. Upload a CAMS or KFinTech Consolidated Account Statement PDF
+4. Add funds manually via the form
+
+Output: per-fund verdicts table, verdict distribution, fund-by-fund detail with score and rationale, phased exit plan with estimated tax, and JSON / Markdown / PDF export.
+
+## Supported SEBI categories
+
+Balanced Advantage, Multi Asset, Aggressive Hybrid, Conservative Hybrid, Equity Savings, Large Cap, Large & Mid Cap, Mid Cap, Small Cap, Multi Cap, Flexi Cap, ELSS / Tax Saver, Value, Dividend Yield, Thematic - Manufacturing, Thematic - Business Cycle, Thematic - Momentum, Thematic - MNC, Thematic - Infrastructure, Thematic - ESG, Thematic - Quant, Sectoral - BFSI, Sectoral - Tech, Sectoral - Pharma, Sectoral - FMCG, Sectoral - Energy.
+
+## Privacy
+
+100% client-side. No portfolio data is sent to any server. Excel parsing uses SheetJS, PDF parsing uses PDF.js — both loaded from public CDNs only when the user uploads a file. The whole application is a single index.html file. Source is open at https://github.com/fwbotworkamir-cloud/fundfolio under MIT licence.
+
+## Related tools by Sky Sigma
+
+- UAE E-Invoice Pre-Flight Validator: https://einvoice.sky-sigma.com
+
+## Disclaimer
+
+Model output only. Not financial advice. Users should confirm tax treatment with a Chartered Accountant before acting on any redemption decision. NRI users should also confirm NRO repatriation rules with their bank.
