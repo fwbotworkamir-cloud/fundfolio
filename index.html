@@ -959,10 +959,27 @@ async function importFromPDF(arrayBuffer) {
 }
 
 // Permissive parser — handles CAMS CAS, KFin CAS, and custom MF portfolio reports
-// Strategy: find category keywords anywhere in text, work backwards/forwards
-// to identify the fund name and the cost/current value numbers.
+// Strategy: find anchor for fund table (skips summary / commentary above),
+// then find category keywords and capture the fund name + nearby numbers.
 function parseCAMSText(text) {
-  const lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+  let lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+
+  // ── Anchor detection: skip everything above the fund-table header ──
+  // Look for: "COMPLETE FUND HOLDINGS", "FUND HOLDINGS", CAS column headers like
+  // "Scheme/Plan", "NAV", "Cost", "Market Value", etc.
+  let anchorIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/\b(complete fund holdings|fund holdings|scheme[\s/]plan|scheme name.*cost|scheme.*units.*nav)\b/i.test(lines[i])) {
+      anchorIdx = i + 1;
+      break;
+    }
+  }
+  // If anchor found, slice the text from there (skips summary, commentary,
+  // asset-allocation table above which were causing false positives).
+  // If no anchor (some CAMS CAS layouts have it implicit), fall back to whole text.
+  if (anchorIdx > 0) {
+    lines = lines.slice(anchorIdx);
+  }
 
   // Category detection patterns — order matters (most specific first)
   const CATPAT = [
@@ -1023,55 +1040,80 @@ function parseCAMSText(text) {
     const cat = detectCategory(line);
     if (!cat) continue;
 
-    // 2) Extract fund name candidate:
-    //    Case A: name and category on same line → "ICICI Pru Mid Cap Fund Mid Cap"
-    //    Case B: name on previous line → previous non-junk line above
+    // 2) Extract fund name — look BACKWARDS for the nearest line that:
+    //    - is not a position number (1, 2, 3...)
+    //    - is not a number row (invested / current / P&L / %)
+    //    - is not a category line
+    //    - contains real alphabetic content
     let name = null;
+    // Same-line case: "ICICI Pru Mid Cap Fund Mid Cap"
     const sameLineMatch = line.match(/^(.{8,140}?)\s+(?:Bal Advantage|Balanced Advantage|Multi.?Asset|Large.?(?:and|&).?Mid|Large Cap|Mid Cap|Small Cap|Multi Cap|Flexi Cap|Value|ELSS|Hybrid|Th[\-\s]\w+|Sec[\-\s]\w+|Manufacturing|Momentum|Infrastructure|BFSI|Banking|Technology|Pharma|FMCG)/i);
     if (sameLineMatch && sameLineMatch[1].trim().length > 6) {
       name = sameLineMatch[1].trim();
     } else {
-      // Look backwards for the name on an earlier line
-      for (let j = i - 1; j >= Math.max(0, i - 4); j--) {
-        if (isJunk(lines[j])) continue;
-        if (detectCategory(lines[j])) continue;
-        // Skip pure numeric lines
-        if (/^[\d,.\s\-+%₹n()]+$/.test(lines[j])) continue;
-        // Must contain at least one alphabetic word
-        if (!/[a-z]{3,}/i.test(lines[j])) continue;
-        name = lines[j];
+      for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
+        const c = lines[j];
+        if (!c || c.length < 4) continue;
+        if (/^\d+$/.test(c)) continue;                          // bare position number
+        if (/^[\d,]+(?:\.\d+)?$/.test(c)) continue;             // bare number
+        if (/^[\d,.\s\-+%₹n()]+$/.test(c)) continue;            // any all-number-ish row
+        if (detectCategory(c)) continue;
+        if (isJunk(c)) continue;
+        if (!/[a-z]{4,}/i.test(c)) continue;
+        name = c;
         break;
       }
     }
-
     if (!name) continue;
 
-    // 3) Collect numbers from this line and the next ~5 lines, ignore tiny ones
-    const blob = lines.slice(i, Math.min(i + 7, lines.length)).join(" ");
-    const nums = (blob.match(/[\d,]+(?:\.\d{1,4})?/g) || [])
-                    .map(s => parseFloat(s.replace(/,/g, "")))
-                    .filter(n => n >= 1000 && n < 1e10 && Number.isFinite(n));
-    if (nums.length < 2) continue;
+    // 3) Collect the next 4 number-only lines (invested, current, P&L, return%)
+    //    Custom summary report layout: numbers on individual lines after category.
+    //    CAS layout: numbers all on one line after scheme name.
+    const numberLines = [];
+    for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+      const c = lines[j];
+      if (!c) continue;
+      // Pure number row (with comma / decimal / sign)
+      if (/^[+\-]?[\d,]+(?:\.\d+)?%?$/.test(c)) {
+        const n = parseFloat(c.replace(/[,%+]/g, "").replace(/^\-/, "-"));
+        if (isFinite(n)) numberLines.push(n);
+      } else if (/[\d,]+(?:\.\d+)?/.test(c)) {
+        // Mixed line with numbers — extract them
+        const matches = c.match(/[+\-]?[\d,]+(?:\.\d+)?/g) || [];
+        for (const s of matches) {
+          const n = parseFloat(s.replace(/,/g, ""));
+          if (isFinite(n)) numberLines.push(n);
+        }
+      }
+      if (numberLines.length >= 4) break;
+    }
 
-    // The two largest numbers are most likely cost and current value
-    const large = [...nums].sort((a, b) => b - a);
-    let current = large[0];
-    let invested = large[1];
+    // Identify invested + current from the captured numbers
+    // Layout: [invested, current, P&L, return%]
+    // Filter: must be in plausible MF rupee range (1000 to 1e9)
+    const moneyNums = numberLines.filter(n => n >= 1000 && n < 1e9);
+    if (moneyNums.length < 2) continue;
+    const invested = moneyNums[0];
+    const current  = moneyNums[1];
 
-    // Sanity: usually invested <= current within reasonable range
-    // (loss-making funds can have invested > current — that's fine)
-    if (current === invested && large.length > 2) invested = large[2];
+    // Sanity check: gain/loss ratio should be sensible (within -90% to +500%)
+    const ratio = current / invested;
+    if (!isFinite(ratio) || ratio < 0.1 || ratio > 6) continue;
 
-    // Clean & dedupe
+    // Clean & validate name
     const clean = cleanFundName(name);
     if (clean.length < 5) continue;
+    // Reject obviously bogus names (purely uppercase header strings, etc.)
+    if (/^(TOTAL|GRAND TOTAL|ASSET ALLOCATION|PORTFOLIO|COMPLETE|SUMMARY)/i.test(clean)) continue;
+    // Reject commentary lines
+    if (/(largest|top performer|underperformer|heavy allocation|total profit|holdings)/i.test(clean)) continue;
 
     funds.push({
       name: clean,
       category: cat,
       invested,
       current,
-      first_invest_date: "2023-01-01",  // not present in summary reports
+      first_invest_date: "2023-01-01",
     });
   }
 
@@ -1133,124 +1175,6 @@ function readFileAsArrayBuffer(file) {
   return new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(r.result);
-    r.onerror = () => rej(r.error);
-    r.readAsArrayBuffer(file);
-  });
-}
-
-function readFileAsText(file) {
-  return new Promise((res, rej) => {
-    const r = new FileReader();
-    r.onload = () => res(r.result);
-    r.onerror = () => rej(r.error);
-    r.readAsText(file);
-  });
-}
-
-async function handleExcelFile(file) {
-  try {
-    showImportStatus(`Parsing ${file.name}…`, "info");
-    if (file.name.toLowerCase().endsWith(".csv")) {
-      const text = await readFileAsText(file);
-      handleImport(importFromCSVText(text));
-    } else {
-      const buf = await readFileAsArrayBuffer(file);
-      handleImport(importFromExcel(buf));
-    }
-  } catch (e) {
-    showImportStatus(`Error: ${e.message}`, "err");
-  }
-}
-
-async function handlePDFFile(file) {
-  try {
-    showImportStatus(`Parsing ${file.name}… this may take a few seconds.`, "info");
-    const buf = await readFileAsArrayBuffer(file);
-    const funds = await importFromPDF(buf);
-    handleImport(funds);
-  } catch (e) {
-    showImportStatus(`Error: ${e.message}`, "err");
-  }
-}
-
-function setupImportTabs() {
-  const tabs = document.querySelectorAll(".import-tabs button");
-  tabs.forEach(btn => {
-    btn.onclick = () => {
-      tabs.forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-      const target = document.getElementById("tab-" + btn.dataset.tab);
-      if (target) target.classList.add("active");
-    };
-  });
-}
-
-function setupFileDrops() {
-  const setup = (dropEl, inputId, handler) => {
-    if (!dropEl) return;
-    const input = document.getElementById(inputId);
-    dropEl.addEventListener("dragover", e => { e.preventDefault(); dropEl.classList.add("dragover"); });
-    dropEl.addEventListener("dragleave", () => dropEl.classList.remove("dragover"));
-    dropEl.addEventListener("drop", e => {
-      e.preventDefault();
-      dropEl.classList.remove("dragover");
-      const f = e.dataTransfer.files[0];
-      if (f) handler(f);
-    });
-    input.addEventListener("change", () => {
-      if (input.files[0]) handler(input.files[0]);
-    });
-  };
-  setup(document.getElementById("excel-drop"), "excel-file", handleExcelFile);
-  setup(document.getElementById("pdf-drop"), "pdf-file", handlePDFFile);
-}
-
-function setupCSVPaste() {
-  document.getElementById("parse-csv-btn").onclick = () => {
-    const text = document.getElementById("csv-paste").value.trim();
-    if (!text) { showImportStatus("Paste some CSV first.", "err"); return; }
-    try {
-      handleImport(importFromCSVText(text));
-    } catch (e) {
-      showImportStatus(`Error: ${e.message}`, "err");
-    }
-  };
-  document.getElementById("csv-template-btn").onclick = () => {
-    document.getElementById("csv-paste").value =
-      "Fund name,SEBI category,Invested,Current,First invest date\n" +
-      "ICICI Prudential Balanced Advantage,Balanced Advantage,500000,700000,2018-01-01\n" +
-      "HDFC Mid Cap Opportunities,Mid Cap,300000,470000,2022-03-01\n" +
-      "Nippon India Multi Asset,Multi Asset,200000,235000,2023-04-01";
-  };
-}
-
-// ───────────────────────────────────────────────────────────────
-//  INIT
-// ───────────────────────────────────────────────────────────────
-function populateCategories() {
-  const sel = document.getElementById("f-cat");
-  const cats = Object.keys(CATEGORY_EXPECTATIONS);
-  sel.innerHTML = cats.map(c => `<option value="${c}">${c}</option>`).join("");
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-  populateCategories();
-  loadLocal();
-  renderFundsList();
-  document.getElementById("add-fund").onclick = addFund;
-  document.getElementById("load-demo").onclick = loadDemo;
-  document.getElementById("score-btn").onclick = score;
-  document.getElementById("save-local").onclick = saveLocal;
-  document.getElementById("clear-all").onclick = clearAll;
-  setupImportTabs();
-  setupFileDrops();
-  setupCSVPaste();
-});
-</script>
-</body>
-</html>
-esult);
     r.onerror = () => rej(r.error);
     r.readAsArrayBuffer(file);
   });
