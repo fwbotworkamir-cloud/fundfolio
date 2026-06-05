@@ -965,8 +965,6 @@ function parseCAMSText(text) {
   let lines = text.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
   // ── Anchor detection: skip everything above the fund-table header ──
-  // Look for: "COMPLETE FUND HOLDINGS", "FUND HOLDINGS", CAS column headers like
-  // "Scheme/Plan", "NAV", "Cost", "Market Value", etc.
   let anchorIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     if (/\b(complete fund holdings|fund holdings|scheme[\s/]plan|scheme name.*cost|scheme.*units.*nav)\b/i.test(lines[i])) {
@@ -974,139 +972,129 @@ function parseCAMSText(text) {
       break;
     }
   }
-  // If anchor found, slice the text from there (skips summary, commentary,
-  // asset-allocation table above which were causing false positives).
-  // If no anchor (some CAMS CAS layouts have it implicit), fall back to whole text.
   if (anchorIdx > 0) {
     lines = lines.slice(anchorIdx);
   }
 
-  // Category detection patterns — order matters (most specific first)
+  // Category detection
   const CATPAT = [
     [/balanced advantage|bal advantage|bal\.?adv/i,            "Balanced Advantage"],
-    [/multi[\s\-\.]?asset/i,                                    "Multi Asset"],
-    [/aggressive hybrid|equity hybrid|hybrid equity/i,          "Aggressive Hybrid"],
-    [/^hybrid$|\bhybrid fd$/i,                                  "Aggressive Hybrid"],
-    [/conservative hybrid|debt hybrid/i,                        "Conservative Hybrid"],
-    [/equity savings/i,                                         "Equity Savings"],
-    [/large[\s\-\.]?(?:and|&)[\s\-\.]?mid/i,                    "Large & Mid Cap"],
-    [/\blarge cap|largecap|bluechip/i,                          "Large Cap"],
-    [/mid cap|midcap/i,                                         "Mid Cap"],
-    [/small cap|smallcap/i,                                     "Small Cap"],
-    [/multi cap|multicap/i,                                     "Multi Cap"],
-    [/flexi cap|flexicap/i,                                     "Flexi Cap"],
-    [/elss|tax saver/i,                                         "ELSS / Tax Saver"],
-    [/\bvalue\b(?!\s*fund\s*$)/i,                               "Value"],
-    [/dividend yield/i,                                         "Dividend Yield"],
-    [/manufacturing|th\-?manufacturing/i,                       "Thematic - Manufacturing"],
-    [/business cycle|th\-?business cycle/i,                     "Thematic - Business Cycle"],
-    [/momentum|th\-?momentum/i,                                 "Thematic - Momentum"],
-    [/\bmnc\b|th\-?mnc/i,                                       "Thematic - MNC"],
-    [/infrastructure|infra fund|th\-?infrastructure/i,          "Thematic - Infrastructure"],
-    [/\besg\b/i,                                                "Thematic - ESG"],
-    [/quant/i,                                                  "Thematic - Quant"],
-    [/banking|bfsi|financial services|sec\-?bfsi/i,             "Sectoral - BFSI"],
-    [/technology|tech fd|digital|sec\-?tech/i,                  "Sectoral - Tech"],
-    [/pharma|healthcare|sec\-?pharma/i,                         "Sectoral - Pharma"],
-    [/fmcg|consumption|sec\-?fmcg/i,                            "Sectoral - FMCG"],
-    [/energy|oil|gas/i,                                         "Sectoral - Energy"],
+    [/multi[\s\-\.]?asset/i,                                  "Multi Asset"],
+    [/aggressive hybrid|equity hybrid|hybrid equity/i,         "Aggressive Hybrid"],
+    [/^hybrid$|\bhybrid fd$|\bhybrid fund$/i,                 "Aggressive Hybrid"],
+    [/conservative hybrid|debt hybrid/i,                       "Conservative Hybrid"],
+    [/equity savings/i,                                        "Equity Savings"],
+    [/large[\s\-\.]?(?:and|&)[\s\-\.]?mid/i,              "Large & Mid Cap"],
+    [/\blarge cap|largecap|bluechip/i,                        "Large Cap"],
+    [/mid cap|midcap/i,                                        "Mid Cap"],
+    [/small cap|smallcap/i,                                    "Small Cap"],
+    [/multi cap|multicap/i,                                    "Multi Cap"],
+    [/flexi cap|flexicap/i,                                    "Flexi Cap"],
+    [/elss|tax saver/i,                                        "ELSS / Tax Saver"],
+    [/\bvalue\b(?!\s*fund\s*$)/i,                          "Value"],
+    [/dividend yield/i,                                        "Dividend Yield"],
+    [/manufacturing|th\-?manufacturing/i,                      "Thematic - Manufacturing"],
+    [/business cycle|th\-?business cycle/i,                    "Thematic - Business Cycle"],
+    [/momentum|th\-?momentum/i,                                "Thematic - Momentum"],
+    [/\bmnc\b|th\-?mnc/i,                                    "Thematic - MNC"],
+    [/infrastructure|infra fund|th\-?infrastructure/i,         "Thematic - Infrastructure"],
+    [/\besg\b/i,                                              "Thematic - ESG"],
+    [/quant/i,                                                 "Thematic - Quant"],
+    [/banking|bfsi|financial services|sec\-?bfsi/i,            "Sectoral - BFSI"],
+    [/technology|tech fd|digital|sec\-?tech/i,                 "Sectoral - Tech"],
+    [/pharma|healthcare|sec\-?pharma/i,                        "Sectoral - Pharma"],
+    [/fmcg|consumption|sec\-?fmcg/i,                           "Sectoral - FMCG"],
+    [/energy|oil|gas/i,                                        "Sectoral - Energy"],
   ];
-
   const detectCategory = (line) => {
     for (const [p, c] of CATPAT) if (p.test(line)) return c;
     return null;
   };
 
-  // Skip lines that are clearly headers / chrome / totals
   const isJunk = (l) => /^(total|grand total|portfolio (summary|info)|asset allocation|key insights|category|invested|current|return|p&l|page \d|#$|\d+$)\s*$/i.test(l)
                     || /^[\d,.\s\-+%₹n]+$/.test(l)
                     || l.length < 4;
 
+  const isNumericLine = (c) => /^[+\-]?[\d,]+(?:\.\d+)?%?$/.test(c) || /^[\d,.\s\-+%₹n()]+$/.test(c);
+
+  const isNameFragment = (c) => c && c.length >= 3 && /[a-z]{3,}/i.test(c) && !detectCategory(c) && !isNumericLine(c) && !isJunk(c);
+
   const cleanFundName = (s) => s
     .replace(/\s*[-–]\s*(Direct|Regular)(\s*Plan)?\s*[-–]?\s*/gi, " - ")
     .replace(/\s*[-–]\s*(Growth|IDCW|Payout|Reinvestment)\s*$/i, "")
-    .replace(/\.\.+$/, "")  // remove trailing ellipsis from truncated names
-    .replace(/\s+(Fd|Fund)$/i, " Fund")  // normalise abbreviation
+    .replace(/\.\.+$/, "")
+    .replace(/\s+(Fd|Fund)$/i, " Fund")
     .replace(/\s{2,}/g, " ")
-    .replace(/^[#\d\s]+/, "")  // strip leading row numbers
+    .replace(/^[#\d\s]+/, "")
     .trim();
 
   const funds = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-
-    // 1) Does THIS line contain a category keyword?
     const cat = detectCategory(line);
     if (!cat) continue;
 
-    // 2) Extract fund name — look BACKWARDS for the nearest line that:
-    //    - is not a position number (1, 2, 3...)
-    //    - is not a number row (invested / current / P&L / %)
-    //    - is not a category line
-    //    - contains real alphabetic content
+    // Fund name: same line OR look backwards (up to 3 lines) AND concatenate fragments
     let name = null;
-    // Same-line case: "ICICI Pru Mid Cap Fund Mid Cap"
     const sameLineMatch = line.match(/^(.{8,140}?)\s+(?:Bal Advantage|Balanced Advantage|Multi.?Asset|Large.?(?:and|&).?Mid|Large Cap|Mid Cap|Small Cap|Multi Cap|Flexi Cap|Value|ELSS|Hybrid|Th[\-\s]\w+|Sec[\-\s]\w+|Manufacturing|Momentum|Infrastructure|BFSI|Banking|Technology|Pharma|FMCG)/i);
     if (sameLineMatch && sameLineMatch[1].trim().length > 6) {
       name = sameLineMatch[1].trim();
     } else {
-      for (let j = i - 1; j >= Math.max(0, i - 3); j--) {
+      // Look BACKWARDS for the closest name fragment, concatenating wrap-arounds
+      const fragments = [];
+      for (let j = i - 1; j >= Math.max(0, i - 4); j--) {
         const c = lines[j];
-        if (!c || c.length < 4) continue;
-        if (/^\d+$/.test(c)) continue;                          // bare position number
-        if (/^[\d,]+(?:\.\d+)?$/.test(c)) continue;             // bare number
-        if (/^[\d,.\s\-+%₹n()]+$/.test(c)) continue;            // any all-number-ish row
-        if (detectCategory(c)) continue;
+        if (!c) continue;
+        if (/^\d+$/.test(c)) break;  // position number = row boundary
+        if (isNumericLine(c)) break;   // numeric row = previous fund's data
+        if (detectCategory(c)) break;  // category = previous fund's row
         if (isJunk(c)) continue;
-        if (!/[a-z]{4,}/i.test(c)) continue;
-        name = c;
-        break;
+        if (isNameFragment(c)) {
+          fragments.unshift(c);
+          // Keep going — long names can wrap to 3+ lines
+          if (fragments.length >= 3) break;
+        }
       }
+      if (fragments.length > 0) name = fragments.join(" ");
     }
     if (!name) continue;
 
-    // 3) Collect the next 4 number-only lines (invested, current, P&L, return%)
-    //    Custom summary report layout: numbers on individual lines after category.
-    //    CAS layout: numbers all on one line after scheme name.
+    // Collect next 4 number-only lines OR numbers from mixed lines
     const numberLines = [];
     for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
       const c = lines[j];
       if (!c) continue;
-      // Pure number row (with comma / decimal / sign)
+      // Pure number row
       if (/^[+\-]?[\d,]+(?:\.\d+)?%?$/.test(c)) {
-        const n = parseFloat(c.replace(/[,%+]/g, "").replace(/^\-/, "-"));
-        if (isFinite(n)) numberLines.push(n);
-      } else if (/[\d,]+(?:\.\d+)?/.test(c)) {
-        // Mixed line with numbers — extract them
+        const n = parseFloat(c.replace(/[,%+]/g, ""));
+        if (isFinite(n)) numberLines.push(Math.abs(n));
+      } else if (/[\d,]+(?:\.\d+)?/.test(c) && !detectCategory(c)) {
         const matches = c.match(/[+\-]?[\d,]+(?:\.\d+)?/g) || [];
         for (const s of matches) {
           const n = parseFloat(s.replace(/,/g, ""));
-          if (isFinite(n)) numberLines.push(n);
+          if (isFinite(n)) numberLines.push(Math.abs(n));
         }
       }
       if (numberLines.length >= 4) break;
     }
 
-    // Identify invested + current from the captured numbers
-    // Layout: [invested, current, P&L, return%]
-    // Filter: must be in plausible MF rupee range (1000 to 1e9)
-    const moneyNums = numberLines.filter(n => n >= 1000 && n < 1e9);
+    const moneyNums = numberLines.filter(n => n >= 1000 && n < 1.5e9);
     if (moneyNums.length < 2) continue;
     const invested = moneyNums[0];
     const current  = moneyNums[1];
 
-    // Sanity check: gain/loss ratio should be sensible (within -90% to +500%)
+    // SKIP TOTAL ROW: a single fund > ₹15 Cr is suspicious
+    if (current > 1.5e8 && /total|grand|portfolio/i.test(name)) continue;
+
+    // Sanity: ratio plausibility
     const ratio = current / invested;
     if (!isFinite(ratio) || ratio < 0.1 || ratio > 6) continue;
 
-    // Clean & validate name
     const clean = cleanFundName(name);
     if (clean.length < 5) continue;
-    // Reject obviously bogus names (purely uppercase header strings, etc.)
-    if (/^(TOTAL|GRAND TOTAL|ASSET ALLOCATION|PORTFOLIO|COMPLETE|SUMMARY)/i.test(clean)) continue;
-    // Reject commentary lines
-    if (/(largest|top performer|underperformer|heavy allocation|total profit|holdings)/i.test(clean)) continue;
+    if (/^(TOTAL|GRAND TOTAL|ASSET ALLOCATION|PORTFOLIO|COMPLETE|SUMMARY|TYPE|CATEGORY)/i.test(clean)) continue;
+    if (/(largest|top performer|underperformer|heavy allocation|total profit|holdings:)/i.test(clean)) continue;
 
     funds.push({
       name: clean,
@@ -1117,7 +1105,18 @@ function parseCAMSText(text) {
     });
   }
 
-  // Deduplicate by normalised name (CAS sometimes lists same fund across pages)
+  // POST-FILTER: if any extracted fund's current value > 50% of sum of others,
+  // it's likely a TOTAL row that slipped through — remove it.
+  if (funds.length >= 3) {
+    const totalCurrent = funds.reduce((s, f) => s + f.current, 0);
+    const filtered = funds.filter(f => f.current < totalCurrent * 0.5);
+    if (filtered.length >= funds.length - 2) {
+      funds.length = 0;
+      filtered.forEach(f => funds.push(f));
+    }
+  }
+
+  // Dedupe by normalised name
   const seen = new Set();
   return funds.filter(f => {
     const k = f.name.toLowerCase().replace(/\s+(fd|fund)$/, "").replace(/\s+/g, " ").trim();
