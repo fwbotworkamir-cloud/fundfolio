@@ -1079,7 +1079,7 @@ function parseCAMSText(text) {
       if (numberLines.length >= 4) break;
     }
 
-    const moneyNums = numberLines.filter(n => n >= 1000 && n < 1.5e9);
+    const moneyNums = numberLines.filter(n => n >= 1000 && n < 5e9);
     if (moneyNums.length < 2) continue;
     const invested = moneyNums[0];
     const current  = moneyNums[1];
@@ -1103,17 +1103,6 @@ function parseCAMSText(text) {
       current,
       first_invest_date: "2023-01-01",
     });
-  }
-
-  // POST-FILTER: if any extracted fund's current value > 50% of sum of others,
-  // it's likely a TOTAL row that slipped through — remove it.
-  if (funds.length >= 3) {
-    const totalCurrent = funds.reduce((s, f) => s + f.current, 0);
-    const filtered = funds.filter(f => f.current < totalCurrent * 0.5);
-    if (filtered.length >= funds.length - 2) {
-      funds.length = 0;
-      filtered.forEach(f => funds.push(f));
-    }
   }
 
   // Dedupe by normalised name
